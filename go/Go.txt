@@ -1,0 +1,443 @@
+goroutine
+
+
+hosts添加域名
+192.30.255.112 gist.github.com
+185.31.16.184 github.global.ssl.fastly.net 
+
+解决go包管理代理网址无法访问：proxy.golang.org
+go env -w GOPROXY=https://goproxy.cn
+
+go env -w GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,https://goproxy.io/,direct
+
+安装所有 依赖
+go get -d -v ./...
+
+
+GO语言调试利器——dlv
+https://www.jianshu.com/p/7373042bba83
+vscode自动调试
+
+
+安装库
+通过 go get github.com/go-sql-driver/mysql    命令安装第三方类库
+  要启用 go get github.com/go-sql-driver/mysql    命令，
+  首先必须设置环境变量GOPATH的路径、并且安装git for windows!!!  否则 go get 命令不起作用。
+
+安装git for windows ,    http://git-for-windows.github.io/  
+
+1.16.3
+现在代码都要 go mod init  一下
+比如 go mod init xxx.com/xxx
+
+
+goworld编译测试
+
+解压后
+go mod tidy一下
+然后去到
+components/gate
+go build 编译ok
+
+
+解压zip
+运行
+go get ./ ...
+
+1.16
+go mod 升级
+https://zhuanlan.zhihu.com/p/352060399
+
+go mod tidy
+
+各种问题
+
+如何组织一个go工程，多目录
+
+首先使用 go mod init <module name>初始化
+比如 go mod init dfk/testgo
+本地目录下的包，使用
+import "<module name>/目录" 来导入
+
+[练习1]
+写一个简单的waterfall, go 版本
+1. 依次执行
+2. 保证cb都在 原routine执行
+
+
+IDE
+https://www.jetbrains.com/go/
+
+
+
+
+func func_args(args ...interface{}) {
+    fmt.Println(args)
+    //newargs := make([]interface{}, 1)
+    //append(newargs, []int{1})
+    args = append([]interface{}{10, "ddddd"}, args...)
+    func_args1(args...)
+}
+参数继续传递,使用  切片...
+
+interface{} 转其他类型
+res, ok := anyInterface.(someType)
+
+res, ok := anyInterface.(int)
+
+
+1. 创建一个channel用于等待外面函数执行完成
+2. callback时,发一个信号给channel
+3. 主体流程等待 channel信号,来推进下一步
+
+
+waterfall
+    var args = 
+    . 创建nextChan
+    
+    . for i <- nextChan:
+        gonext
+
+基本达成目标
+
+所有Task本身都会在 调用者routine中执行
+
+
+[练习2]
+一个房间管理器，每个房间一个单独的routine
+房间里有多个玩家，会接收来自客户端的指令，指令被
+派发到玩家对象所在队列，房间集中运行时，处理相应
+
+
+net:
+接收消息，投递给对应session对象
+发送待发送的消息(发送队列)
+
+room
+处理每一个玩家的逻辑
+处理房间逻辑
+
+
+模拟多层
+能否使用worker模式，多个worker队列来完成
+1. 网络读写
+2. 房间驱动
+
+可以动态增加减少worker
+
+竞态
+对象增删
+
+
+
+Go嵌入(继承)
+
+
+模块
+本地模块
+https://zhuanlan.zhihu.com/p/109828249
+
+go.mod中定义replace
+module moduledemo
+
+go 1.14
+
+
+require "mypackage" v0.0.0
+replace "mypackage" => "../mypackage"
+
+
+
+Go routine调度
+https://zhuanlan.zhihu.com/p/64447952
+
+一个死循环的routine会不会浪费大量CPU
+不处于IO等待的routine会不会被停止执行(被调度)
+
+
+
+总体说来，go语言的调度器会在以下三种情况下对goroutine进行调度：
+
+goroutine执行某个操作因条件不满足需要等待而发生的调度；
+goroutine主动调用Gosched()函数让出CPU而发生的调度；
+goroutine运行时间太长或长时间处于系统调用之中而被调度器剥夺运行权而发生的调度。
+
+对持续10ms的routine发起抢占
+
+
+
+Go语言TCP Socket编程
+https://tonybai.com/2015/11/17/tcp-programming-in-golang/
+
+Go的设计者似乎认为I/O多路复用的这种通过回调机制割裂控制流 的方式依旧复杂，且有悖于“一般逻辑”设计，为此Go语言将该“复杂性”隐藏在Runtime中了：Go开发者无需关注socket是否是 non-block的，也无需亲自注册文件描述符的回调，只需在每个连接对应的goroutine中以“block I/O”的方式对待socket处理即可，这可以说大大降低了开发人员的心智负担
+
+channel的分析
+https://zhuanlan.zhihu.com/p/32521576
+
+如何优雅的关闭Go Channel
+https://zhuanlan.zhihu.com/p/32529039
+
+
+如果是按 pointer 调用，go 会自动进行转换，因为有了指针总是能得到指针指向的值是什么，如果是 value 调用，go 将无从得知 value 的原始值是什么，因为 value 是份拷贝。go 会把指针进行隐式转换得到 value，但反过来则不行。
+
+interface{}
+
+interface{} 是一个空的 interface 类型，根据前文的定义：一个类型如果实现了一个 interface 的所有方法就说该类型实现了这个 interface，空的 interface 没有方法，所以可以认为所有的类型都实现了 interface{}。如果定义一个函数参数是 interface{} 类型，这个函数应该可以接受任何类型作为它的参数。
+
+interface{} 会占用两个字长的存储空间，一个是自身的 methods 数据，一个是指向其存储值的指针，也就是 interface 变量存储的值
+
+
+pprof
+https://segmentfault.com/a/1190000016412013
+
+import(
+    "net/http"
+    _ "net/http/pprof"
+}
+
+http.ListenAndServe("0.0.0.0:8080", nil)
+
+引入pprof后
+http://127.0.0.1:8080/debug/pprof/访问实时控制台
+可以点cpu得到30s的profile文件
+
+得到profile文件后
+go tool pprof -http=:8080 cpu.prof
+go tool pprof -http=:8080 profile1
+
+(需要安装graphviz  https://graphviz.org/download/)
+自动运行网页
+
+
+也可以直接访问地址并开始profile
+go tool pprof http://127.0.0.1:8080/debug/pprof/profile
+
+指标说明
+flat：给定函数上自身运行耗时，不包括调用其他函数
+flat%：自身耗时CPU占比
+sum%：给定函数累积使用 CPU 总比(不是特别明白)
+cum：函数内部总运行耗时，包括调用其他函数
+cum%：总耗时CPU占比
+
+
+https://zhuanlan.zhihu.com/p/396363069
+https://segmentfault.com/a/1190000016412013
+
+内存分析
+https://zhuanlan.zhihu.com/p/265080950
+
+go tool pprof -inuse_space http://127.0.0.1:8080/debug/pprof/heap
+top 对比看看那个增加了
+
+------------------------------------------
+响应式编程
+https://github.com/rsocket/rsocket-go/blob/master/examples/fibonacci/main.go
+https://github.com/ReactiveX/RxGo
+
+
+------------------------------------------
+go test 说明
+http://c.biancheng.net/view/124.html
+
+------------------------------------------
+go workspace
+
+简单来说就是 可以指定本地mod，但是不用在go.mod中使用replace
+
+https://jincheng9.github.io/post/go1.18-workspace-mode-best-practice/
+https://mbox.dev/dev/go/workspace/
+
+
+研究发现
+
+. work查找
+从本地目录开始，看起来会向上查找.work文件
+找到的第一个.work中看看是否有包含目录
+
+. 是否会分析依赖目录的.work文件
+不会
+
+看起来workspace就是一个对工程的定义
+如果本地不存在，会向上查找(会查找几级?，不确定)
+
+
+改造时，去掉以前go.mod中对引用模块的require
+不然可能会有找不到包的报警
+
+
+------------------------------------------
+参考
+
+
+
+
+------------------------------------------
+go语言介绍
+http://www.topgoer.com/
+
+https://zhuanlan.zhihu.com/p/133235857
+go代码规范
+
+
+深入理解Go-垃圾回收机制
+https://segmentfault.com/a/1190000020086769
+
+
+[代码研究]
+(简单备注，细节单开)
+-----------------------------
+ETCD介绍
+服务发现
+http://www.topgoer.com/%E6%95%B0%E6%8D%AE%E5%BA%93%E6%93%8D%E4%BD%9C/go%E6%93%8D%E4%BD%9Cetcd/etcd%E4%BB%8B%E7%BB%8D.html
+
+
+-----------------------------
+golang的actor框架 https://github.com/AsynkronIT/protoactor-go
+
+-----------------------------
+gRPC 
+gRPC 一开始由 google 开发，是一款语言中立、平台中立、开源的远程过程调用(RPC)系统
+
+-----------------------------
+https://github.com/lonng/nano
+使用的就是pomelo协议
+有点 pomelo 的样子，GO 开发
+客户端可以向服务器任何component发消息
+看起来是个单服模式,服务器之间的联系 看起来还没有
+
+是否有并行服务器结构?
+远程服务可以分布在不同的节点，但是 貌似同一服务器不能多开
+-----------------------------
+https://github.com/name5566/leaf
+更新:2016
+
+-----------------------------
+goworld
+属性同步
+自动存储
+热替换
+space逻辑是单线程 routine
+符合游戏开发的一般思路，值得好好分析下
+实现里有参考bigworld的一些思路
+
+-----------------------------
+kudoochui/kudos
+
+-----------------------------
+gRPC
+https://pkg.go.dev/google.golang.org/grpc
+
+-----------------------------
+https://github.com/topfreegames/pitaya
+基于pomelo和nano
+
+https://github.com/bytemode/pitaya-notes
+国人做的注释
+
+-----------------------------
+
+https://github.com/kudoochui/kudos
+
+Kudos是一款基于微服务架构的简洁，高性能，易扩展，易部署的分布式游戏服务框架。基于rpcx的rpc，支持pomelo通信协议，轻松应用于游戏开发
+
+
+https://github.com/smallnest/rpcx
+
+
+-----------------------------
+https://rpcx.io/
+
+-----------------------------
+https://github.com/duanhf2012/origin
+https://github.com/duanhf2012/originserver
+service提供rpc访问
+可以访问远程service
+比leaf更完善一些
+
+-----------------------------
+goframe
+web框架，可以学习下
+
+-----------------------------
+https://blog.csdn.net/turbock/article/details/102665187
+go远程调试
+
+-----------------------------
+https://github.com/name5566/awesome-go
+https://github.com/jobbole/awesome-go-cn
+一堆Go的代码资源
+
+https://draveness.me/golang/
+Go 语言设计与实现
+
+RPC 库（gRPC、Thrift）
+
+-----------------------------
+Go优化相关
+https://zhuanlan.zhihu.com/p/53284649
+
+-----------------------------
+https://www.zhihu.com/question/296426314/answer/502224390
+
+shibukawa/nanovgo 
+日本人移植的 Go 版的 nanovg，基于 OpenGL 实现了画框、画线、画字的 Go API，
+相当于原来 Windows 上的 Direct Draw
+https://github.com/shibukawa/nanovgo
+
+-----------------------------
+https://github.com/nats-io/nats.go
+https://zhuanlan.zhihu.com/p/40871363
+
+nats是一个开源的，云原生的消息系统。Apcera，百度，西门子，VMware，HTC和爱立信等公司都有在使用。
+
+-----------------------------
+https://github.com/viphxin/xingo
+xingo是免费、开源、可定制、可扩展、节点支持“热更新”的高性能分布式服务器开发框架，采用golang语言开发
+
+具体使用请参考项目：
+帧同步服务器: https://github.com/viphxin/fighting
+mmo demo: https://git.oschina.net/viphxin/xingo_demo
+xingo_cluster demo: https://github.com/viphxin/xingo_cluster
+
+
+-----------------------------
+go和nodejs比对
+https://yalantis.com/blog/golang-vs-nodejs-comparison/
+
+-----------------------------
+https://github.com/gomatic/go-vbuild
+编译时嵌入编译信息
+
+-----------------------------
+github.com/facebookgo/inject
+go 依赖注入库
+google/wire、uber-go/dig 以及 facebookgo/inject 
+
+获取注解
+fieldTag := o.reflectType.Elem().Field(i).Tag
+
+
+-----------------------------
+https://github.com/talkgo
+
+-----------------------------
+https://github.com/xtaci/gonet
+http://gonet2.github.io/
+
+https://zhuanlan.zhihu.com/p/102890337
+
+
+-----------------------------
+
+https://github.com/bobohume/gonet
+virtual actor
+
+https://github.com/bobohume
+https://github.com/bobohume/WinServer
+
+bobohume
+
+10年c++服务器，是端游转过手游来的，在我不断的优化下，成功从c++98到c++11，以及32位到64位的转变，从端游服务器，转到手游服务器，上线人数单服1W+没太大压力。 go是我业余的时候接触到的，在现在大环境下，高并发和跨平台是现在开发游戏服务器的主流，之前那套c++说实在是够用，只要能达到那个量，单服性能极致，我只服c++。 skynet+lua，c底层，lua逻辑，我也过来过c++底层，lua逻辑，但实际效果是lua并不是我想要去写的，可能我对lua脚本不感兴趣。go做的事情和skynet做的大同小异，都是携程，抢占式g调度模式，go 有个goroutine和channel，skynet lua虚拟机。 当时设计go的时候，由于跟c++大轮子有点出路，c++是循环轮子模式，单逻辑处理能力有目共睹，再设计go的时候我选择了actor模式，每个角色都相互独立，这点携程和信道立功了。全服中，没用到锁的地方不用锁，全服用到锁的地方就一两处，acotr模式立功了，每个角色有各自的消息队列，接受和处理信息。 大体主流网络模式是rpc，不过不是第三方的rpc，而是自己的rpc，不用protbuf那样定义消息体，只需要类型即可，通过refeclt go里面神奇的东西，用好事半功倍，在c++里面只能用宏来实现，或者用template，当然通信方面也支持protobuf客户端与服务器之间的传输。 image.png
+
+go的mmorpg 完全可以媲美c++的，关键是你服务器要想着简单话，3d变2d化。碰撞这些引擎帮你做就好。大型端游除外，比如确实有引擎相关，四元数，矩阵，渲染，这些还是推介直接c++，c++这种数学算法库很齐全，没必要闭门造车。
+
