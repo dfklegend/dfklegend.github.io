@@ -1,0 +1,702 @@
+https://github.com/AsynkronIT/
+https://github.com/AsynkronIT/protoactor-go
+https://proto.actor/docs/
+
+https://www.zhihu.com/question/356407007/answer/1505551698
+
+有go和C#版本
+
+https://github.com/asynkron/protoactor-dotnet
+使用protoactor-dotnet的一个例子
+https://github.com/asynkron/realtimemap-dotnet
+实时地图
+
+C#版本还实现了grain(Orleans)
+
+https://proto.actor/docs/cluster/getting-started-net/
+
+
+
+
+io类型h5游戏，客户端使用ts版cocos creator。服务器使用golang actor分布式框架,可伸缩部署
+https://github.com/magicsea/h5game
+
+protoactor应该很方便可以用来构建服务器组
+
+
+server := actor.NewPID("127.0.0.1:8080", "chatserver")
+定义了一个远程的actor
+
+然后就很方便就可以发送消息
+PID就是 actorRef [Address,Id]
+
+
+https://zhuanlan.zhihu.com/p/427806717
+go 开源框架源码解析
+actor
+
+
+
+RequestFuture
+Context.AwaitFuture
+
+借鉴了orleans的grain概念，node注册自己能创建那些actor,然后cluster可以决定
+在那里创建这个grain
+
+
+https://proto.actor/docs/cluster/
+virtual-actor
+
+需研究确认
+grain建立前，消息被谁持有
+崩溃了，被重建前，消息会丢失吗？
+
+------
+文档阅读
+https://proto.actor/docs/
+
+What is Proto.Actor?
+
+    即提供基本actor模式也提供virtual actor模式
+    Proto.Actor同时希望成为一个跨语言的Actor框架
+
+Akka.net
+    创建了自己的一切，线程池，网络层，序列化
+    但是也需要付出巨大的开发维护成本。
+    现在Proto.Actor聚焦于解决实际的问题，并发和分布式，
+    重用已有的被证明过的方案。
+
+    使用Protobuf作为序列化，使用gRPC作为网络通讯手段
+
+
+Scalable, distributed real-time transaction processing
+    “let it crash”
+    电信产业取得巨大成功的模式
+
+A unique hybrid
+Actors
+. 简单高级的并发，并行的抽象
+. 异步，非阻塞，且高性能事件编程模式
+. 轻量级事件驱动处理
+Virtual Actors aka. Grains
+.
+Fault Tolerance
+. 
+Location Transparency
+
+Why Proto.Actor?
+    小，可选集成
+
+Design principles
+Minimalistic API
+    不要过度膨胀。
+    logging, configuration, scheduling等特性使用第三方库。
+    聚焦
+Build on standards
+    使用证明过的标准
+    Protobuf for serialization, gRPC Streams for network transport, Consul for cluster membership
+Message passing, not object passing
+    不隐藏序列化，序列化是要给明确的概念，消息应该明确定义，
+并且平台无关
+Be fast
+
+Features
+Actor
+    各种创建actor方式
+Props
+    对象设置
+Context
+    Data
+        父节点PID，自己的PID，发送者PID，...
+    Features
+        响应发送者
+        暂存当前消息(准备重新发送)
+        ...
+    ProcessRegistry
+        
+    Process
+        发送用户消息
+        发送系统消息
+        停止
+Supervision
+PID
+    Features
+Future process
+Dead letter process
+Routers
+Remote
+
+Actors
+    PID
+    State
+        意思是，可以自动持久化
+    Behavior
+        可以切换行为，来在不同情况下的消息不同处理
+    Mailbox
+        消息队列
+    子Actors
+    监督策略
+    Actor中止
+Messages
+概念和术语
+    并发和并行 Concurrency vs Parallelism
+    异步和同步
+    非阻塞和阻塞
+    Deadlock vs. Starvation vs. Live-lock
+    竞争
+    非阻塞保证
+        Wait-freedom
+        Lock-freedom
+        Obstruction-freedom
+
+https://proto.actor/docs/life-cycle/
+生命周期
+
+    如果actor会被重启，其他monitor是不会收到stop消息的
+
+Message Delivery Reliability
+    本地消息只是使用对象来发送，远程传输有消息大小限制
+
+------
+使用了gRPC的stream模式
+
+消息序列化流程
+endpointWriter.sendEnvelopes
+    remote.Serialize
+        缺省是proto_serializer
+        序列化 数据和typeName
+
+        batch并发送过去
+        使用了gRPC的stream模式
+
+Remote
+    newEndpointReader
+
+
+reader
+    是service的消息接受
+writer
+    向每个服务器发送消息
+watcher
+
+
+response消息是如何传递回去，只要看sender
+
+本地的PID，如何在发送过去后，转化为对应的远程PID
+发现如果是使用了remote，本地的PID也带了地址
+
+r.actorSystem.ProcessRegistry.RegisterAddressResolver(r.remoteHandler)
+r.actorSystem.ProcessRegistry.Address = address
+
+也就是说，返回消息，都是反向投递回去，链路只是单向
+
+
+
+
+如果发送失败
+    ctx.Stash() 说是暂存数据?
+    但是没看到如何使用这个缓存数据
+
+
+
+远程的PID
+remote_process.go:  SendUserMessage
+    ref.remote.SendMessage
+        r.edpManager.remoteDeliver(rd)            
+            endpoint := em.ensureConnected(address)
+            em.remote.actorSystem.Root.Send(endpoint.writer, msg)
+
+发到writer里去了
+意思是，如果目标地址不可达，其实会一直尝试连接，发送者无法再做处理
+
+------
+protobuf
+
+重新使用protoc来生成proto文件，报错，说生成的结构不是 proto.Message
+
+看文档里有：
+Notice: always use "gogoslick_out" instead of "go_out" when generating proto code. "gogoslick_out" will create type names which will be used during serialization.
+
+用了?
+https://github.com/gogo/protobuf 
+
+不确定
+
+protoc --go_out=plugins=grpc:./ *.proto
+
+protoc -I="../../../modules/protoactor-go-0.2.0/actor" --go_out=plugins=grpc:. --go_opt=paths=source_relative --proto_path=. protos.proto
+
+重新编译安装了protoc-gen-go即可
+
+D:\go\pkg\mod\google.golang.org\protobuf@v1.28.0\cmd\protoc-gen-go
+
+参看
+https://segmentfault.com/a/1190000039767770
+也就是说 go get -u google.golang.org\protobuf
+他有可能不会更新protoc-gen-go，进去手工编译一下
+
+------
+examples
+    actor-autorespond
+        消息通过提供GetAutoResponse可以自动给一个反馈消息
+    actor-backpressure
+        演示了后台任务
+        actor.WithMailbox
+    actor-deadletter
+        DeadLetter主要用于调试，发现未投递的消息
+    actor-mailbox-middleware
+    actor-messagebatch
+        消息可以打包，一起发过去
+    actor-mixins
+        plugin    
+    actor-receive-middleware
+        接受中间件
+    actor-receive-timeout
+        多久没收到消息，会有timeout通知消息
+    actor-request-response
+        等待返回消息(阻塞了流程)
+    actor-setbehavior
+        行为切换
+    actor-supervision
+        监督
+    opentelemetry
+        看起来有个web控制台
+    persistence
+        持久化
+    remote-activate
+        不是特清楚node1,node2什么关系
+    remote-advertised-address
+        remote actor
+        开放地址
+    remote-benchmark
+    remote-channels
+        消息push到channel里去了
+    remote-chat
+        聊天，广播
+    remote-header
+        可以带一个header
+        能否某个消息附带header
+    remote-routing
+        路由到不同的remote
+    remote-watch
+        remote.SpawnNamed
+            可以远程创建actor
+            对端需要先注册类型
+    router-limitconcurrency
+        工作组，并发个数
+    scheduler
+        调度
+------
+Future
+    完成了，如何得到通知
+    Process的概念
+    使用future的时候，发送消息的sender被替换为了future，也就是response被发送给future对象
+    收到的时候调用
+    func (ref *futureProcess) SendUserMessage(pid *PID, message interface{}) {
+    设置result和信号
+
+    相当于每个future会创建一个临时的process
+
+    如果是远程的，流程如何，process的线程环境如何?
+    首先，可以远程的消息，必须是可以被序列化的，比如，单独string不可以
+
+
+    Process是处理抽象，本地对象以及远程
+    actorProcess
+
+    Process都注册在ProcessRegistry中，pid:process
+    提供了一个PID->process的快速获取
+
+    defaultMailbox
+        如果发现需要调度，会重新启动调度
+        func (m *defaultMailbox) PostUserMessage(message interface{}) {
+            ...
+            m.schedule
+
+
+    func (pr *ProcessRegistryValue) Get(pid *PID) (Process, bool) {
+        根据地址来选择本地对象还是远程对象
+
+
+    todo: 跟踪远程send, response过程
+    response消息，如何发回，使用那个链接
+
+    A->B，回传链接如何获得
+------
+理解Actor
+spawn后，应该都是通过PID来发送消息
+
+------
+Actor不可达后，如何识别
+目前看起来没有相应的处理
+比如，远程的某个actor不存在了
+
+chat demo里面，某个client连接中断以后，服务器那边enpointwriter还一直刷connect
+
+removeEndpoint
+
+当前如果连接断开，会移除entpoint
+但是如果向一个无法连接的PID发消息，会一直重连
+远程的PID发送消息如何触发
+
+触达流程
+remote_process
+    ref.remote.SendMessage
+        r.edpManager.remoteDeliver(rd)
+            ensureConnected
+            em.remote.actorSystem.Root.Send(endpoint.writer, msg)
+
+如果连接没成功，消息应该在
+    endpoint.writer的mailbox中
+
+actor启动时，会建立连接
+case *actor.Started:
+        state.initialize()
+
+如果连接建立失败，直接是panic了，那么也不会处理userMessage
+
+
+
+
+------
+actor重启
+之前发送过去的消息,mailbox如何继承
+
+因为actor对象并不是被完全new，而是通过
+处理
+    actor.Restarting
+    actor.Started
+来实现自启动，mailbox对象没有改变
+
+处理消息中异常
+    该消息是否会丢失？需要确认
+
+
+    func (ctx *actorContext) restart() {
+        会重新InvokeUserMessage(之前Stash保存的)
+        这个restart执行，应该是在父actor的环境里
+
+
+错误处理
+捕获异常，调用
+EscalateFailure
+    暂停mailbox
+    通知父节点
+
+parent.handleFailure
+    strategy.HandleFailure
+        allForOneStrategy.HandleFailure
+
+    props.getSupervisor().HandleFailure
+
+
+
+剩余消息，如果
+    restart，那么还在队列中
+    如果stop，那么
+        需要确认
+
+
+缺省行为是
+    每个出错的actor先restart几次(receiver会被重新create)
+    如果短时间出错太多，就最后stop掉actor
+
+------
+actor创建过程
+props.go
+    defaultSpawner
+        newActorContext
+        produceMailbox
+        NewActorProcess
+        actorSystem.ProcessRegistry.Add
+
+    消息调度由mailbox来调度
+    ProcessRegistry负责提供PID到Process的查询
+
+------
+PID使用
+PID如何区分本地和远程对象
+发送消息时，会获取pid对应的process对象
+pid.ref(actorSystem).SendUserMessage(pid, message)
+
+ProcessRegistryValue.Get
+如果发现PID的地址非本地地址，则通过remote.remoteHandler来获取一个
+remote.process对象 (每次调用都创建一个)
+(同一个PID对象会缓存一下)
+
+比如一个远程的actor的PID会被对影成remote.process
+本地对象则被对应成ActorProcess，在对PID的使用接口上得到统一
+
+特殊
+Future的使用会创建一个futureProcess
+
+------
+Actor对象
+
+type Actor interface {
+    Receive(c Context)
+}
+
+// The ReceiveFunc type is an adapter to allow the use of ordinary functions as actors to process messages
+type ReceiveFunc func(c Context)
+
+// Receive calls f(c)
+func (f ReceiveFunc) Receive(c Context) {
+    f(c)
+}
+
+只要有Receive方法即可
+ReceiveFunc有个包装
+
+Actor是可以扩展的
+
+------
+ActorContext
+
+Actor其实只是定义了一个处理消息的接口
+actorContext是调用actor处理消息时一些现场信息，
+比如
+    自身actor, 父节点，当前消息，actorSystem等
+    创建的props
+
+如何扩展Actor?
+如何扩展Context?
+
+------
+RootContext
+
+容易和actorContext搞混，实际上RootContext和actorContext是两个不同类型对象
+
+------
+cluster
+其实也就是提供了，节点注册自己可以创建actor的类型
+cluster使用侧，根据算法，要求在对应节点创建actor
+等待actor创建回来之后(好像有阻塞等待)，进行消息访问
+
+至于grain的调用方式，只是使用更方便，这块没有深入看
+
+------
+consul
+服务发现，监控等
+
+介绍
+https://zhuanlan.zhihu.com/p/356490521
+
+------
+orleans使用c#的await语法的异步语言写起来非常不错
+protoactor如何能有类似的，而不是需要定义两个消息
+
+能否扩展成类似的，重点是保持在同一个运行环境
+Future.Pipeto可以保证，但是写起来还是需要处理消息，而没法
+回调到现场
+
+struct Request {
+    int reqId;
+    Object obj;
+}
+
+struct RequestAck {
+    
+}
+
+如果消息本身能附带一些数据，比如
+RawMessage
+    Message
+    MsgExt
+
+ext可能是附带的消息，
+比如
+RequestExt
+    int reqId
+
+RequestAck
+    int reqId
+
+如果发现是
+Receive
+    hasAck
+        ProcessAck(message)
+            根据reqId，取出回调
+            调用回调
+
+------
+protoactor和游戏服务器
+1. actor的default dispatcher执行携程并不固定
+2. 希望能引入RPC callback范式代码
+3. actor粒度不用太细，但是用actor
+来构建一些服务还是不错得
+
+
+当前cell
+. 提供了方便的服务器组织
+. 提供了rpc回调调用
+. 提供了前端协议转发
+
+TODO:
+. 需要抽象内部服务代码
+. 可以提供远程命名服务实现
+. 可以使用protobuf/json来进行消息序列化
+
+proto.actor的Process实现可以参考，相当于可以很方便的
+进行 请求转发
+
+
+设计
+. 基础通用的的rpc模块
+. 通用的序列化模块
+. pomelo cluster组织方式
+. pomelo前后端服务器概念
+. 客户端协议转发
+. 命名service访问
+    (actor模型)
+. service都有固定的routine，而不是可能新建
+. PID call保证回调在调用者环境 执行
+
+
+
+细节
+. 定义客户端接口
+. 定义远程服务接口
+. 定义service(actor)接口
+
+
+app.rpc.ActorCall("serviceName@serverId", Msg, func(RPCResult result) {
+    
+})
+
+pid.Call(Msg, func(CallResult result) {})
+
+Actor
+    Start()
+        RegisterHandler(Msg, func)
+
+proto.actor
+    是序列化同时，将对象类型也序列化传过去
+之前是分析接口来，获知类型
+
+
+接口处理也是各service
+通讯将消息投递到service，然后被处理
+
+是否使用proto.actor来处理服务器之间的通讯
+问题:
+能否在基础上提供
+
+
+Actor思考
+    从当前互联网的架构看起来，更多的还是服务为基础，以服务
+为单位提供功能。
+    Actor模式中，Actor可以被任意分布在不同服务器，提供的是
+开发和组合的便利性。Actor变化时，代码基本是不需要改变的。
+
+
+构想
+. 利用actor，搭建服务器之间互联
+
+
+
+实现构思
+. actor扩展基于接口的Receiver
+    也就是可以使用一个接口dispatcher
+
+
+--------
+深入了解event机制
+就是一个简单的事件机制，处理器自己判断事件类型是否
+是自己需要的
+
+
+--------
+cluster
+ClusterProvider
+
+type ClusterProvider interface {
+    StartMember(cluster *Cluster) error
+    StartClient(cluster *Cluster) error
+    Shutdown(graceful bool) error
+    // UpdateClusterState(state ClusterState) error
+}
+
+StartMember和StartClient区别
+StartMember
+    应该是定义自己为cluster的一个成员
+StartClient
+    应该是只是一个client，使用者，并不是成员
+
+
+Member包括向cluster注册自己，Client只是请求cluster信息
+
+
+一般更新
+从对应的Provider获取member信息，调用下面语句更新
+p.cluster.MemberList.UpdateClusterTopology(members)
+
+----
+consul
+
+member
+. 向consul注册自己
+    registerService
+        ID:
+        Name:
+        Tags:   目前注册是已知类型
+            可以实现为 已知服务
+        Address: 地址
+        Port:    端口
+        Meta: map[string]string{
+            "id": p.id,
+        }
+
+. 定期向consul UpdateTTL
+    p.clusterError = p.client.Agent().UpdateTTL("service:"+p.id, "", api.HealthPassing)
+
+
+. 开始监视变化
+startWatch
+
+处理变化
+processConsulUpdate
+
+并最终 更新
+pa.cluster.MemberList.UpdateClusterTopology(msg.members)
+
+
+如果节点Tags变化了，如何处理，重新注册一下?
+
+----
+etcd
+用json存了一下
+
+连接etcd
+获取信息
+刷新Nodes
+
+保持watching
+    handleWatchResponse
+        根据数据变化刷新
+        发布数据变化
+
+
+register
+keepalive
+    重新设一下数据，并刷新
+
+
+
+--------------------------
+https://proto.actor/docs/bootcamp/unit-1/lesson-1/
+不用手动控制线程
+    不用手动控制线程，能确保我们代码线程安全
+    不使用锁来共享资源，我们使用actor model来避免这些
+    容易出错又复杂的工作
+高级抽象
+    应用里面所有都是actor,他们通过消息交互
+垂直扩展
+    增加硬件，应用可以自动的使用机器性能。
+水平扩展
+    可以分布在不同物理机器上
+容错性和错误处理
+
+通用架构
+    我们使用actor model来实现我们系统，我们可以用一种较为通用
+的方式做所有事情。

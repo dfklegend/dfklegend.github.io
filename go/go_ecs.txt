@@ -1,0 +1,15 @@
+go 的一些ecs实现
+
+https://github.com/marioolofo/go-gameengine-ecs
+
+里面有很多ecs实现的benchmark
+
+内存上使用了内存池，来管理component的分配
+system使用了一个filter来标识对某些持有component的entity的集合
+有一定参考意义
+
+
+github.com/EngoEngine/ecs
+github.com/Falldot/Entitas-Go
+
+有时间可以 实现一个非ecs参与一下benchmark

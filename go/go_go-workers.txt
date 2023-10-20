@@ -1,0 +1,59 @@
+https://github.com/topfreegames/go-workers
+
+github.com/jrallison/go-workers
+
+ruby实现的任务系统Sidekiq
+go实现
+
+https://zhuanlan.zhihu.com/p/133646923
+
+假设
+    namespace为 mynamespace
+    队列名为 myqueue
+    processId为 1
+
+
+queuename = "mynamespace:queue:myqueue"
+progress = "mynamespace:queue:myqueue:1:inprogress"
+schedule = "mynamespaceschedule"
+
+fetcher
+    从 queuename中 pop任务
+    push到progress队列中
+    同时发送到 当前messages用于消费
+
+    Acknowledge
+        会删除 有响应的message
+
+    放progress队列有什么意义？
+        用于统计?
+
+    processOldMessages
+        外部调用Fetch时，设计目的不太能理解
+            会重新处理老的消息？
+
+worker
+    从messages消费消息
+    执行 实际的消费 活动
+        .confirm <- message
+            fetch.Acknowledge
+
+
+enqueue 
+    加入队列 queuename
+    如果是延迟的
+        先推送到 schedule 队列
+
+        
+
+schedule
+    取出 > now的任务
+    推送到队列 queuename
+
+
+简单来说就是 构建了一个简单的任务系统
+根据队列来消费任务
+
+
+middleware.go
+    闭包传递

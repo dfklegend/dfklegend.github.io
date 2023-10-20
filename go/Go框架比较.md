@@ -1,4 +1,7 @@
 
+# 说明
+    这里记录和分析了部分golang的服务器框架
+
 # pitaya
     引入了etcd,NATS
         RPC可以用gRPC或者NATS

@@ -1,0 +1,257 @@
+https://grpc.io/docs/languages/go/basics/
+https://github.com/grpc/grpc-go
+
+gRPC客户端是同步操作(coroutine),每个客户端都会阻塞当前
+coroutine
+
+使用时，需要考虑
+比如
+player.onMsg
+    RPC("xxx")
+
+结合gRPC的服务器如何组织coroutine
+(nano的rpcclient池效果如何?)
+
+大厅逻辑
+1. 网络底层独立
+2. player一个独立coroutine
+    处理底层组装好的消息
+        call rpc0
+        call rpc1
+
+构建一个rpc场合
+房间打开，可以同时聊天
+收到消息后，使用rpc调用到 聊天服务器
+
+
+player.onChar
+    rpc("chat")
+
+player.onCardCmd
+    doSomething
+
+如果player一个coroutine,那聊天可能阻塞后续的card请求，要么就
+创建新的coroutine来执行rpc
+
+感觉如果rpc是异步的更舒适
+看文档,rpc可以设置成异步
+
+Synchronous vs. asynchronous
+
+gRPC的服务器的rpc处理也是被分配到不同的routine里了
+原则是什么，有配置吗？
+如果配置了
+s.opts.numServerWorkers
+
+
+if s.opts.numServerWorkers > 0 {
+            data := &serverWorkerData{st: st, wg: &wg, stream: stream}
+            select {
+            case s.serverWorkerChannels[atomic.AddUint32(&roundRobinCounter, 1)%s.opts.numServerWorkers] <- data:
+            default:
+                // If all stream workers are busy, fallback to the default code path.
+                go func() {
+                    s.handleStream(st, stream, s.traceInfo(st, stream))
+                    wg.Done()
+                }()
+            }
+        } else {
+            go func() {
+                defer wg.Done()
+                s.handleStream(st, stream, s.traceInfo(st, stream))
+            }()
+        }
+
+如果 channel空闲，使用channel来执行
+如果channel不空闲,也
+否则新建一个 routine
+
+
+那基本可以认为 rpc都执行在独立的routine里
+需要注意竞争资源的处理
+
+
+思考
+能否将rpc都投递到一个routine中执行，有没有好处？
+或者用锁
+
+
+投递方案
+Service
+    Cmd() serial int
+        投递到service主routine
+        s.cmds <- cmd        
+
+    Wait(serial int)
+        等待对应cmd执行完毕
+
+        chan := make(chan int, 1)
+
+        s.registerWaitSerial(serial, chan)
+        // 此routine等待
+        ret := <- chan
+
+        return ret
+
+
+    run
+        for {
+            select {
+            case cmd <- s.cmds:
+                doCmd()
+                pushOver(cmd.serial, ret)
+            case update:
+                doUpdate()
+            case die:
+                reutrn
+            }
+        }
+        
+    pushOver(serial, ret)
+        chan := s.getChanBySerial()
+        chan <- ret
+
+rpc1
+    serial := service.Cmd()
+    service.Wait(serial)
+
+rpc2
+
+
+
+--------------------------
+    gRPC客户端调用会阻塞routine，服务器部分
+则会开启一个新的routine来处理实际的请求。
+    如何组织代码避免阻塞客户端部分，服务器
+部分则如何简化锁
+
+1. 客户端部分新的rpc调用，可以启动一个新的
+routine来执行，结果返回则投递到当前线程
+2. 服务器部分将逻辑投递到 对应处理的routine
+然后
+3. 客户端部分如果有waterfall来串行流程，也能
+解决逻辑有序问题
+4. waterfall实现，能否也不阻塞当前线程
+(能否有个通用调度器，waterfall将事情派发到调度器
+上执行)
+
+client
+    waterfall([func(callback) {
+        go func() {
+            ret = rpc.call("hello")
+            callback(null, ret)
+        }
+    }, func(callback) {
+        do something
+        go func() {
+            ret = rpc.call("hello2", ret)
+            callback(null)
+        }
+    }])
+
+server
+    rpc_hello(args) {
+        // 投递到对应服务
+        task := sche.post("hello", args)
+        ret = sche.wait(task)
+        return ret
+    }
+
+
+
+需求
+能方便的将任务投递到目标调度器中
+可以等待目标任务被执行完毕
+ 
+scheduler
+    
+    handler
+        select {
+        case task <- s.tasks:
+            task.cb();            
+            s.finish(task)
+        }
+
+
+
+将所有的
+
+
+如果一个routine需要各种功能，有如下代码
+
+handler
+        select {
+        case task <- s.tasks:
+            task.cb();            
+            s.finish(task)
+        case e <- s.exit:
+            //xxx
+        case b <- a.chanXXX:
+            xxx
+        }
+
+能否通用，可以统一加入一个调度器
+
+type CbFunc func()
+
+
+struct Task {
+    id int
+    cb CbFunc    
+}
+
+type CanScheduler interface {
+    GetTaskChan()(chan Task)
+}
+
+scheduler
+
+
+handler
+    for each queue        
+        select {
+            case t <- queue:
+                t.cb();
+                s.finish(t)
+        default:
+
+
+        }
+
+waitTask(t Task) {
+    for(true) {
+        if(t.over)
+            return
+    }
+}
+
+
+
+
+跟踪gRPC Invoke代码
+
+
+func invoke(ctx context.Context, method string, req, reply interface{}, cc *ClientConn, opts ...CallOption) error {
+    cs, err := newClientStream(ctx, unaryStreamDesc, cc, method, opts...)
+    if err != nil {
+        return err
+    }
+    if err := cs.SendMsg(req); err != nil {
+        return err
+    }
+    return cs.RecvMsg(reply)
+}
+
+看起来每次创建一个clientStream,Send,Recv 结束
+
+所以会阻塞当前携程
+并且是可并发调用的
+
+如果要提高吞吐量，可以设一个routine池，并发client rpc
+问题:
+    可能造成某些情况下，rpc不是顺序
+解决
+    用method来分配给具体的routine
+
+
+cs.withRetry实际用途

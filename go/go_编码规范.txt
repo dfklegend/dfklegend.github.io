@@ -1,0 +1,51 @@
+https://www.cnblogs.com/Survivalist/articles/10596110.html
+
+
+https://makeoptim.com/golang/standards/project-layout/
+https://blog.51cto.com/u_15301988/3080009
+
+关于目录结构
+不过关于pkg的描述，我看到很多工程并没有使用此规则，比如gRPC
+
+gRPC目录如下
+grpc
+    admin
+    ...
+    module
+    internal
+        module
+        ...
+
+
+基本每个目录是一个模块，会有一些定义
+如果有些内部代码，会统一定义到internal目录下，也分模块
+
+golang 模块定义原则
+首先，模块定义在单独目录中
+比如
+module
+    ...
+
+如果模块中具体还能细分成目录，同样原则
+module
+    submodule
+    submodule
+
+如果模块使用接口来和其他模块交互，可以将接口定义在目录下，而将实现放到目录里
+比如
+module
+    interfaces.go
+    consts.go
+    impls
+        xxxx.go
+        ...
+
+也可以，将定义放到单独目录里，比如
+module
+    define
+        interfaces.go
+        consts.go
+    xxxx.go
+    ...
+
+

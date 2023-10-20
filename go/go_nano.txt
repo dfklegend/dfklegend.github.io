@@ -1,0 +1,238 @@
+https://github.com/lonng/nano
+
+协议看起来和pomelo很像
+客户端
+请求通过reqId来查询对应的cb,再调用cb返回
+
+cluster例子
+会链接到master,注册自己的远程服务
+
+看起来比较完善的实现了pomelo的前端服务器转发
+(代码也学习pomelo，同一工程混在一起，感觉可以分开)
+
+意思应该是 接收到的消息，根据service所在的服务器，做转发
+而不是像pomelo，明确的向某个服务器发送，感觉这块还是pomelo
+方便一点
+
+
+相当于每一个node都有一些远程服务，会同步给其他所有的node，
+推测对客户端无关，客户端只要连接一个对外服务器，即可获取所有
+其他的远程访问可能
+疑问
+1. 客户端的请求如何转发和返回
+2. 服务器之间是不是也可以直接 请求服务
+3. 服务有区分内部服务和对客户端服务吗？
+
+整个看一遍
+benchmark
+    性能测试
+    基础消息
+cluster
+    服务器组相关目录
+    node代表节点相关功能
+    proto
+        协议protobuf
+    acceptor
+    agent
+        连接的代理
+        客户端连接代理
+        RPC
+            todo
+            调用rpcHandler而不是发送消息
+        write
+            发送流程
+            go?
+    cluster
+        管理集群
+            负责在集群内广播每个 服务器的地址
+        维护内部的可访问rpc service
+        rpcClient
+            c.rpcClient.getConnPool(m.memberInfo.ServiceAddr)
+            看起来可以获取对目标的一个连接
+        Register
+        Unregister
+            看起来会向其他服务器广播注册的handle之类
+        connpool
+            grpc的连接池
+            内部使用grpc来内部通讯
+            连接池，多个连接并发先后顺序会不会有问题
+    handler
+        代表了 进程中所有服务的描述
+        本地的或者远程
+        handle
+            处理来自客户端的消息
+            go运行
+            处理消息
+        processMessage
+            根据注册情况判断是本地还是远程服务
+        remoteProcess
+            远程服务
+            路由
+                随机(可以允许多服务)
+                或者选用绑定的对应服务
+                (如何绑定)
+            返回如何对应
+            gRPC-Go 中，RPC以阻塞/同步模式操作，这意味着 RPC 调用等待服务器响应，同时要么返回响应，要么返回错误
+            nano好像并没有对应
+    node
+        Startup
+            启动
+            如果有ClientAddr，就监听客户端连接
+        initNode
+            初始化grpc服务器
+            初始化rpcClient
+        各种不同服务器的listen
+        节点服务器的 rpc处理
+        findOrCreateSession
+            被转发过来的rpc
+            会创建一个sessions,acceptor
+    ws
+        websocket的一些相关
+component
+    method
+        判断component的函数是否是handler
+    options
+        属性的设置方式，可读性不错
+    service
+        分析component对象所有符合handler的函数
+internal
+    codec
+        客户端消息包格式
+    env
+        一些app环境变量
+    log
+        log输出
+    message
+        消息
+        根据字典压缩，减少消息大小
+    packet
+        包定义
+mock
+    network_entity
+        看起来是像做request返回值,但是没搜到使用
+pipeline
+    看起来能统计消息进入量
+scheduler
+    调度器
+    让函数都转发到一个routine上执行
+    timer
+        让timer在调度器上执行
+serialize
+    序列化器
+    json.Marshal() 只输出json的可导出字段
+    反序列化时基本上就是尽量能匹配的匹配，根据给出的结构
+service
+    好像是用来分配sessionid的
+session
+    代指客户端的session结构
+    问题:远程服务器上有相应的数据吗？
+    目前看起来应该没有，
+
+group.go
+    看起来是类似频道的意思    
+interface.go
+    nano.listen
+
+
+
+客户端消息处理流程
+node.listenAndServeWSTLS
+    handler.handleWS
+        go handle
+            processPacket
+                processMessage
+                    localProcess或者remoteProcess
+
+服务器之间rpc处理流程       
+clusterpb.RegisterMemberServer(n.server, n)注册rpc处理   
+node.HandleRequest          
+
+
+问题:
+处理的返回值如何对应
+
+
+func (bs *BindService) Login(s *session.Session, msg *LoginRequest) error {
+    bs.nextGateUid++
+    uid := bs.nextGateUid
+    request := &protocol.NewUserRequest{
+        Nickname: msg.Nickname,
+        GateUid:  uid,
+    }
+    if err := s.RPC("TopicService.NewUser", request); err != nil {
+        return errors.Trace(err)
+    }
+    return s.Response(&LoginResponse{})
+}
+
+reqId如何和Response对应，内部变量？这个有点小问题，如何类似pomelo那样对应更好一点
+
+rpc有没有和response对应
+
+
+思考:
+handler如果只是做接口相关的是不是更单纯一点
+
+
+问题
+使用gRPC来服务器之间发送请求，但是gRPC是不保证调用顺序的(连接池)，
+极端情况下有可能后面的消息先被处理
+
+gRPC RPC函数会在新routine中执行，如何减少逻辑部分的锁
+
+gRPC client是阻塞的，阻塞当前routine
+
+
+分析
+nanoserver-master
+麻将
+
+nanager(service)
+    处理玩家登录
+    处理来自web的操作(踢人等)
+
+desk_manager(service)
+    管理所有桌子
+OpChoose
+    p.chOperation <- &protocol.OpChoosed
+    玩家操作
+
+desk(Object)
+    play
+        go执行
+        每个桌子独立routine   
+        for() {
+            player.doCheckHandTiles等待当前玩家操作
+            do
+            nextPlayer
+        }        
+
+player(Object)
+    doCheckHandTiles
+        等待玩家操作    
+        p.chOperation    
+
+
+总结
+每个牌局一个routine
+玩家操作会被push到操作channel中，在逻辑中读取执行
+桌子死亡也通过通道来中断doCheckHandTiles
+
+如果部署成集群，客户端的请求如何route到对应后端服务器，
+有一个绑定service的概念
+
+pomelo是针对服务器进行路由，而不是针对service
+针对service，同类的service如何区分
+
+
+A(前端服务)
+B(接口)
+
+A
+    收到client消息
+    通过服务找到目标服务器
+    组织成rpc
+B
+    收到rpc
+    可以根据service的调度参数，投递
+    到指定routine执行

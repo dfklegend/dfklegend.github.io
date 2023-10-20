@@ -1,0 +1,433 @@
+https://github.com/topfreegames/pitaya
+
+https://pitaya.readthedocs.io/en/latest/
+
+文档阅读
+简介
+    pitaya受pomelo启发，基于nano的网络库发展而来。
+    目标是提供一个基础的，针对分布式多人游戏易于
+开发的框架
+特性
+    User sessions
+    Cluster support
+            支持服务发现和RPC模块，允许不同服务器之间
+        很轻松的互联
+    WS and TCP listeners
+    Handlers and remotes
+        handler消息:
+            客户端的消息
+        remote消息:
+            服务器之间的消息
+    Message forwarding
+        会自动将客户端请求消息投递到合适的服务器
+    Client library SDK
+    Monitoring
+        支持Prometheus
+    Open tracing sompatible
+        open tracing兼容，使用Jaeger会非常简单
+    Custom modules
+    Custom serializers
+        支持JSON和Protobuf，也可以方便添加其他方式
+    Write compatible servers in other languages
+    REPL Client for development/debuging
+    Bots for integration/stress tests
+结构
+
+特性细节
+    Frontend and backend servers
+            frontend接受客户端连接，并且能将客户端请求
+        转发到正确的服务器
+            backend服务器接收rpc,无论是来自转发的客户端
+        请求还是其他服务器组件
+    Message forwarding
+            如果从route里发现客户端请求不是本服务器，消息将
+        被转发到对应服务器，缺省路由是随机选择，玩家可以定制
+        路由行为来指向指定服务器。
+    Message push
+    Modules
+        Binary
+            启动一个子进程
+        Unique session  
+            根据唯一id来看是否已经存在其他frontend服务器上
+            ETCD
+        Binding sotrage
+        Monitoring
+        Custom Metrics
+        Pipelines
+        RPCs
+            gRPC or NATS(default)
+            Sys RPCs
+                消息被转发时(forward)
+            User RPCs
+                服务器之间的rpc
+            User Reliable RPCs
+                如果失败可以重试
+    Server operation mode
+        Standalone mode
+        Cluster mode
+    Serializers
+        缺省是JSON
+    Sessions
+        Frontend
+        Backend
+            PushToFront
+            后端服务器可以通过user ID获取
+
+Communication
+    客户端连接并发起request
+        . acceptor建立连接
+        . 连接被传递到handler service
+        . handler server为此连接创建一个agent
+        . 从连接读取消息
+        . 消息使用配置的解码器解码
+        . 处理被解码的消息
+        . 第一个packet将是 握手消息，服务器将返回
+            handshake response，包括serializer, 路由
+            字典和细条timeout
+        . 客户端响应 handshake ack，连接建立成功
+        . 处理数据消息，从message route中获取服务器类型
+        . 如果目标服务器类型不是当前服务器，服务器将发起
+            一个远程call。远程调用中包含了当前session的替代
+            实例
+        . 目标远程服务收到了请求后，创建一个新的remote agent
+        . before pipeline functions 正确调用
+        . 目标服务器上正确的的handler将被调用，返回结果会被
+            序列化，并调用after pipeline functions
+        . 如果后端服务器想修改 session，就修改并push
+        . 一旦前端服务器收到响应(来自目标服务器)就转发消息给session并设置
+            对应的request message ID
+        . agent接收到请求，编码并发送到客户端
+
+Acceptors
+    Acceptors是代表监听的实体，创建并传递给handler service。
+
+Handler service
+    底层连接被建立并传递给handler service后，service将负责管理
+        连接的生命周期。读取消息，调用本地请求或者转发远程请求。
+
+    可以配置可以被处理的并发消息数量，无论本地还是远程消息
+        pitaya.concurrency.handler.dispatch
+
+Configuration
+    Viper
+
+
+REPL
+实时控制台
+
+服务器之间rpc和nano有何区别?
+
+
+代码简单阅读
+
+acceptor
+    接受前端的链接
+    connChan <- c
+
+acceptorwrapper
+    接受/发送 流程的包装功能
+    提供一些链接限速等功能
+
+agent
+    agent
+        客户端连接
+        handle
+            驱动 
+        write(go)
+            发送消息处理   
+        read流程 go handlerService.Handle(conn)
+    
+    agent_remote        
+        当客户端消息被传递到目标服务器之后，会创建一个remote agent，
+        代表转发的
+
+client
+    客户端连接
+
+cluster
+    服务器之间rpc的实现
+    gRPC和nats
+    都是同步的rpc调用
+
+component
+    method
+        分析某个函数 是handler还是remote消息
+
+    service
+        注册的服务器拆解成 handler和remote
+
+config
+    配置相关
+    viper
+
+conn
+    message    
+        消息定义
+        routes 数据字典
+    packet
+        包定义
+
+constants
+
+context        
+    提供了一个类似字典插入context中
+
+groups
+
+logger
+    github.com/sirupsen/logrus
+
+metrics
+    github.com/DataDog/datadog-go/statsd
+
+modules
+    binding_storage
+        通过etcd来维护 userId:frontendId的绑定关系
+    unique_session
+
+protos
+    protobuf的协议
+
+remote
+    远程服务
+
+route
+    服务route对象
+
+router
+    路由服务
+    具体讲某个rpc转发到对应的服务器
+    但是奇怪的事 user rpc都是随机指定一个服务器
+    缺少pomelo的指定路由功能
+
+serialize
+    json
+    protobuf
+
+service
+
+    handler
+        本地服务处理
+        服务派发(本地,远程)
+
+        Dispatch
+            service启动时创建多个routine
+
+        Handle
+            处理agent的消息读取
+
+        processPacket  
+        processMessage
+            消息推送到对应管道  
+    remote
+        远程服务
+        remoteProcess
+            remoteCall
+                同步调用
+
+        RRC
+            直接发起服务器之间调用
+
+
+session
+    通过agent和agent_remote提供session
+
+    NetworkEntity是一个更底层的通讯接口(包装tcp,ws)
+
+app.go    
+    .Configue
+    .Start
+    .listen
+        中go handlerService.Handle(conn)
+
+component.go
+    .Register
+    .RegisterRemote
+
+group.go
+    SendPushToUsers
+        获取uid所在服务器id bindingStorage.GetUserFrontendID
+        bindingStorage 各服务器之间同步uid->frontendId
+
+rpc.go
+
+
+需要细化的点
+
+pitaya v2验证
+
+. 客户端请求转发
+    改造web端和cluster,基本ok
+
+. 多服务器进程，客户端请求路由
+    多开connector测试
+    多开room测试
+
+    开了2个room,结果被错误投递到了 另外一个room
+    route函数，是for range(map)，顺序可能改变？
+    确认go 的map顺序随机
+
+    . GroupBroadcast应该也是进程内的结构
+
+. 服务器之间RPC调用
+    
+    注意注册的时候，会检查参数和返回值，是否允许rpc调用
+    
+
+
+pitaya思考
+1. 服务器没有一个明确的名字
+    现在有一个分配的唯一id(字符串，可读性欠佳)
+
+2. 可能是想，比如：分配完成后，明确的绑定到某个服务器
+比如 
+    session里面每个服务类型绑定一个
+    room:xxxx-xxx-xx
+
+3. route机制
+pomelo在访问rpc时，提供以下参数
+    routeArgs
+    funcName
+    ....
+
+    再结合注册的routeFunc函数
+    routeFunc(routeArgs)来唯一确定一个服务器id
+
+        如果在前端服务器，routeArgs自动为session，这样保证前端
+    自动路由，又保证了路由的灵活性
+
+
+注册接口，接口内函数满足一定格式要求，就是接口函数
+
+接口和remote接口(只允许服务器内rpc访问)的格式要求不是很一样
+
+nats
+    rpc请求使用protobuf序列化发送到服务器
+
+    消息中的参数如何被序列化
+
+RPC过程
+client
+RPC(... arg)
+    arg首先被protobuf序列化
+    包装成request
+    再次被序列化
+
+server
+    反序列化成request
+    调用remote.Call
+    根据定义参数类型，反序列化 消息Data
+    调用 目标函数
+
+. 所有rpc都需要定义proto
+
+? 客户端消息如何序列化
+
+客户端序列化成 json字符串上传
+
+handler.processMessage
+    msg
+        Data 字符串
+
+unmarshalHandlerArg
+    字符串
+
+proto3生成对象包含json格式
+
+不如nano，直接用json做rpc序列化
+或者可以定制
+
+
+----------------------
+Go的 context.Context 用途
+https://zhuanlan.zhihu.com/p/68792989
+用来协调 context 用来解决 goroutine 之间退出通知、元数据传递的功能
+
+比如，一个调用触发了一系列的routine，如果context传递进去了，可以使用
+父context来关闭整个链
+----------------------
+agent/agent_remote.go
+    Kick 的流程
+
+    首先注册了系统远程组件sys
+    initSysRemotes
+    remote/sys.go
+        Kick
+
+    kick
+        SendRequest发送了一个sys.kick
+
+    调用到了
+        remote/sys.go/Kick
+----------------------
+RPC的注册使用流程
+
+RPCType_Sys  RPCType = 0 
+    //服务器在将处理程序消息转发到适当的服务器类型时由服务器完成的RPC
+RPCType_User RPCType = 1 
+    //当应用程序主动调用另一台服务器中的远程方法时，便完成了用户RPC。呼叫可以指定目标服务器的ID，
+    也可以让Pitaya根据路由逻辑选择一个
+
+component.go
+    . Register注册handler
+    . RegisterRemote注册remote
+
+    startupComponents
+        使用handlerService和remoteService初始化各个接口
+
+
+session必须经过Bind(uid)这样group功能能正常运作
+
+----------------------
+启动流程
+    带参数启动xxx.exe -key=value -key=value
+    来传入定义的服务器类型
+
+----------------------
+install
+ETCD
+https://blog.csdn.net/skh2015java/article/details/80712214
+
+NATS
+https://docs.nats.io/nats-server/installation
+go get github.com/nats-io/nats-server/v2
+
+----------------------
+例子分析
+chat
+    客户端和服务器连接正常
+cluster
+    chat的客户端连接说是wrong
+    使用wsaccept后,客户端收到的shakehandresp字符串是乱码
+
+    原来是压缩开关
+    原本的cluster是tcp同时开启了压缩，但是客户端js代码没有压缩
+
+    serverType
+    启动参数带 serverType
+
+    远程消息发送过去了，现在是逻辑性问题，没有bind，
+    按逻辑先调用 room.room.entry
+
+    然后再room.room.join
+    发消息改成 room.room.message
+
+    entry时bind算法改改,改成不一样的
+
+    整个聊天看起来正常了
+
+    基本了解了整个
+
+----------------------
+需确认:tcp部分分包处理是否完善
+有人说用ReadFull来解决这个问题
+func ReadFull(r Reader, buf []byte, min int) (n int, err error) {
+    return ReadAtLeast(r, buf, len(buf))
+}
+但是如果包大小部分也被拆分了呢
+经过验证，没啥问题,ReadFull会阻塞直到读取到为止
+----------------------
+
+集成的其他系统
+Jaeger
+    分布式链路追踪系统, 由Uber启动项目，逐渐在内部推行

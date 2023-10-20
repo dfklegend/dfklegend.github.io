@@ -1,0 +1,297 @@
+思考
+Go搭建游戏服务器，goroutine的处理将非常关键
+怎样才能发挥routine的优势，但是又避免让逻辑开发者
+过多的关注routine
+
+可以按不同游戏类型来分析下
+斗地主
+    玩家大厅中，参与各种活动，比如，签到等
+    玩家浏览 大厅桌子状态(人数,开局与否)
+    点击进入桌子，显示玩家信息
+    开始进入斗地主游戏
+
+    按规则，进行游戏
+        抽牌
+        打牌
+
+    游戏胜负结算
+
+MMO
+    场景刷怪
+    角色进入场景
+    视野逻辑(9宫格)
+    攻击敌方目标
+
+
+底层和大厅部分逻辑基本一致
+
+网络底层部分
+Listen
+    单独routine
+Send
+    单独routine
+Recv
+    单独routine
+
+大厅部分
+Player的逻辑
+    可以单独一个routine，基本不会和其他玩家有直接交互
+最好，客户端的请求都投递到player对应routine执行
+
+好处
+    player的所有处理在一个routine执行，减少复杂度，不用过多
+考虑资源竞争和锁。
+坏处
+    消息可能需要多次投递
+
+查看大厅状态
+    每个桌子简介信息
+
+玩家请求大厅状态
+    (返回多个桌子状态)
+    将请求
+
+Way1
+每个player独立routine
+大厅独立routine
+player的请求包装成rpc请求到大厅
+大厅查询结果后，返回到player
+player获取结果后，返回客户端
+
+Way2
+所有player和大厅一个routine
+logic.update
+    updateLobby
+    updatePlayers
+        player.onReqLobbyStatus
+            status = lobby.makeLobbyStatus
+            return status;
+
+
+开发复杂度
+方式Way1高
+
+效率
+player和大厅都放到一个routine，执行起来
+卡顿会相互影响
+
+
+
+基于service提供基础的rpc,定时等功能
+单独的service逻辑执行在一个routine
+remote service的请求将自动包装成远程消息
+
+Message
+    type
+        req
+        notify
+    reqId
+        请求id，返回时对应cb
+    data
+
+// 希望cb在调用routine中触发
+RPCClient
+    Request(disp, msgRoute, args, cb)
+    Notify(disp, msgRoute, args, cb)
+    registerCB()
+    
+
+RPCServer
+
+
+RPCContainer
+    RPCClient或者RPCServer的持有者，
+RPC callback逻辑和RPCServer调用的逻辑由Container来触发
+    RegisterProxy
+    UnregisterProxy
+
+    UpdateProxy
+        for each proxy
+            select {
+            case msgRet <- proxy.GetCBChan():
+                execCB(msgRet)            
+            case msg <- proxy.GetMsgChan():
+                execMsg(msg)
+            default:
+            }
+
+
+
+RPCProxy
+    GetCBChan
+    GetMsgChan
+
+
+Connection
+    Listen  (r:1)
+    Send    (r:1)
+    Recv    (r:1)
+
+Desk
+    Update  (r:1)    
+        刷新对局逻辑
+        处理Desk上player逻辑
+
+切分routine原则
+每个service独立routine
+service内可切分的逻辑单元 独立routine
+
+比如
+麻将
+桌子管理器service独立routine
+每个桌子一个routine
+rpc投递到对应单元
+
+
+MMO(固定大小场景)
+每个场景一个routine
+    处理场景逻辑
+    处理玩家逻辑
+    (玩家的消息投递过来)
+
+
+MMO(超大场景)
+场景区块一个routine
+场景区块之间会有问题
+(大世界服务器经典问题)
+
+
+300逻辑服务器
+logic
+    消息投递到player队列
+    player队列请求处理由所在场景对象调用
+
+如果player运行由场景负责
+切换场景
+如果牵扯到routine切换，可能会比较复杂
+
+routine
+    管理routine
+        一些协同的逻辑投递到这里运行
+        比如：新玩家，
+    每个场景一个update routine
+
+1. 切换场景逻辑会投递到 管理routine
+2. 管理routine 
+
+    oldStage.lock
+    stage.lock
+    
+
+    player.leaveStage(oldStage)
+    player.enterStage(stage)
+
+
+
+需求:
+消息可以很方便的重新投递到service
+request
+    返回值会投递回来并在service routine执行
+notify
+    没有返回值
+
+
+// 本地调用
+getService().Request(msgName, args, func(err, res) {
+    //
+})
+
+远程和本地服务接口是否可以保持一致
+
+ServiceClient
+    调用指定的service，维护reqId
+
+
+    Request(msgName, args, cb)
+
+
+Service
+
+和nodejs区别, nodejs进程只有一个逻辑线程，所有的回调都投递到了
+该线程，现在go如果要多个不同routine，还是有点复杂
+
+
+
+构造一个案例，会调用远程服务和本地服务，尝试分析如何调用一致
+
+ServiceA
+    SumBC()
+    计算B,C的和
+ServiceB
+    GetV()
+
+ServiceC
+    GetV()
+
+A,B在一个进程，C在另外一个进程
+[server, service, func]
+
+SumBC
+    waterfall:
+    serviceMgr.Call("server.ServiceB.GetV", routeArgs, args, func(err, res) {
+        B = res;
+    })
+
+    serviceMgr.Call("server.ServiceC.GetV", routeArgs, args, func(err, res) {
+        C = res
+    })
+
+    return B+C
+
+GetV(args, cb) {
+    cb(null, 1)
+}
+
+baseService.processMsg
+
+    cb = makeCB(caller, funcInfo)
+
+
+func (s *service) (args, cb) {
+    
+    sevice.invoke(cb)
+}
+
+
+
+
+
+service能否只是提供接口，实际逻辑可以通过定义一个调度器，
+调度到指定routine上执行，全局可以注册一些有名字的调度器，
+通过配置指定service使用那一个
+参看 nano.scheduler
+
+
+几个框架的RPC部分对比
+
+leaf
+    并没有明确看出来cluster如何组织
+nano
+    注册的服务会同步给所有node
+    调用时，远程服务组装成gRPC发送
+    接收方 
+        调度到指定routine执行
+    RPC的返回结果好像并没有关联起来    
+pitaya
+    单独注册 handler和remote
+    前端服务会监听客户端
+    前端请求 转发至 目标服务器
+    可直接发起服务器之间的RPC(remote)
+        RPC都是同步调用
+
+origin
+
+
+
+
+
+
+
+
+
+-------------------------
+想解决的问题
+. 逻辑的routine拆分原则
+. 
+
+

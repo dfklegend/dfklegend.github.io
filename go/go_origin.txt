@@ -1,0 +1,27 @@
+service和module的抽象有点意思
+
+service在独立routine执行，这点也很不错，其他请求服务，应该使用
+rpc调用
+node
+service
+module
+
+3级抽象有点意思，service可以比较灵活的
+放到不同node里面
+
+event
+    确保事件处理在对应 service的routine中发生
+
+rpc
+
+
+service.method
+获取service所在的node，然后投递消息
+    
+
+request先投递到channel中，便于service拉取执行
+
+
+收到消息
+找到service
+投递给service

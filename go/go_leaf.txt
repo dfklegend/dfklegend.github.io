@@ -1,0 +1,114 @@
+https://github.com/name5566/leaf
+
+https://github.com/name5566/leaf/blob/master/TUTORIAL_ZH.md
+
+
+leaf/chanrpc 提供了一套基于 channel 的 RPC 机制，用于游戏服务器模块间通讯
+leaf/db 数据库相关，目前支持 MongoDB
+leaf/gate 网关模块，负责游戏客户端的接入
+leaf/go 用于创建能够被 Leaf 管理的 goroutine
+leaf/log 日志相关
+leaf/network 网络相关，使用 TCP 和 WebSocket 协议，可自定义消息格式，默认 Leaf 提供了基于 protobuf 和 JSON 的消息格式
+leaf/recordfile 用于管理游戏数据
+leaf/timer 定时器相关
+leaf/util 辅助库
+
+
+提供了一个 类似注册消息处理机制的 框架，阅读起来还是比较容易理解
+也能较好的理解一些Go的概念
+
+问题:
+TCP部分 使用ReadFull读取，感觉可能还是可能有问题
+类似tcp流大小字段被拆分的情况
+
+感觉用bufio的Peek会更合理
+
+leaf/timer的使用
+
+注册rpc
+
+
+
+总结
+leaf提供服务器监听和消息接收发送实现
+leaf提供了RPC注册机制
+rpc调用会被投递到注册点(handler)
+
+
+实际使用时要先选择Processor
+var Processor = json.NewProcessor()
+
+具体流程见教程
+https://github.com/name5566/leaf/blob/master/TUTORIAL_ZH.md
+
+
+
+cluster
+    client/server 可以组件集群
+    但是并没有看出实际如何使用
+
+
+
+
+疑问:
+通过gate setRouter设置消息投递目标
+有什么意义?不是已经注册了 handler吗
+
+能有新的Module吗？如何创建
+Skeleton 代表了一个具体的 服务
+拥有比如:可通讯的channel,timer等能力
+leaf.Run会启动参数中所有的Module, Module要提供
+一个Run函数
+
+
+cluster的功能和意义
+
+chanrpc
+    c/s成对
+    s注册rpc函数
+    s调用后,结果push到结果channel
+    c等待结果channel,并cb(cb函数在channel数据结构里)
+
+直接把函数带进去
+如果按网络方式组织
+. 调用时，注册等待的rpc回调
+    申请一个 唯一rpc callid
+    回调回来的时候用 callid取 注册的回调
+. 消息投递过去(TCP或者本地)
+. 根据消息路径，找到处理者，调用
+. 调用cb中，拿到返回值
+    组织返回消息，附带callid，向c发送回调消息
+. C收到消息后，根据callid,找到注册的cb，调用cb
+
+
+
+
+
+
+
+每个链接一个routine
+收到消息，就投递到对应的channel
+rpc注册所在的channel
+component如何划分合理，避免过多的加锁
+
+与传统模式
+消息先收到，组织称msg,传递到对应的对象
+对象再处理
+
+如果要控制消息接收/发送，防止某一个快速连接大量消息占用服务器资源，尽量
+平滑的保证所有连接机会均等，需要组织一下
+
+
+
+如何使用routine来组织游戏服务器
+比如
+帧同步房间服务器
+. 连接使用routine来接收消息
+. 消息投递到对应逻辑 对象
+. 逻辑帧运行时(可以每个房间一个routine)
+
+
+
+    
+MMO
+

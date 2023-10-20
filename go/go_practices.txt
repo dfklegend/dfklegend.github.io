@@ -1,0 +1,287 @@
+. TCP基础读取，经典拆包老问题
+
+有的实现用ReadFull
+看代码
+
+
+func ReadFull(r Reader, buf []byte) (n int, err error) {
+    return ReadAtLeast(r, buf, len(buf))
+}
+
+func ReadAtLeast(r Reader, buf []byte, min int) (n int, err error) {
+    if len(buf) < min {
+        return 0, ErrShortBuffer
+    }
+    for n < min && err == nil {
+        var nn int
+        nn, err = r.Read(buf[n:])
+        n += nn
+    }
+    if n >= min {
+        err = nil
+    } else if n > 0 && err == EOF {
+        err = ErrUnexpectedEOF
+    }
+    return
+}
+
+假设有个大小字段4个字节，只有2个到达，会怎样
+
+ReadFull(, 4字节buf)
+
+构建一个测试用例
+. 包结构
+dword length
+bytes[] (length长度)
+. 发一个消息
+. 故意发1个额外字节
+
+看看读取代码反应如何
+
+结果是
+ReadFull好像会阻塞到读取到指定的数据，除非EOF
+
+
+ReadAtLeast代码很明确是个for循环
+居然没仔细看
+(可能会有空读取，造成少量性能损耗)
+
+另外一种是，读取数据后，放入缓冲
+利用缓冲来组织成包，类似先看看整个包是否完整
+
+
+ReadFull会一直调用read来确保读取需求的数据，如果没有数据，
+可能会空转
+
+
+如果改造ReadAtLeast,发现读取是0，主动进入调度
+runtime.Gosched()
+
+会不会好一点,理论上能提高其他routine的并发性
+
+
+如何测试
+. 创建核x3的routine数量
+. 空转的routine,用来计算运行次数
+    每个routine记录自己运行次数
+. 连接一个tcp服务器和客户端
+. 固定时间后，退出并汇报
+
+
+
+
+
+Read没数据时会阻塞routine,而不会空转
+WSARecv
+socket是否是阻塞模式，如果设置成非阻塞会如何？
+
+基于某个剖析文章的描述
+底层都是non-blocking的，但是外部表现为 阻塞式
+https://tonybai.com/2015/11/17/tcp-programming-in-golang/
+
+
+调度器
+可以将任务派发到指定routine
+可以等待对方routine执行完毕
+
+ok
+
+模拟一个复杂逻辑
+[玩家上线过程]
+. logic收到rpc,玩家上线
+. 请求投递到 mgr routine执行
+
+----- mgr routine -----
+创建角色对象
+请求 数据库读取 玩家数据 (rpc)
+(防止rpc阻塞)
+数据返回后，player对象读取数据
+player对象 onEnterWorld
+
+返回 投递的任务
+------------------------
+得到返回
+
+
+
+
+问题：
+任务是否需要设置超时
+
+
+
+之前的waterfall会阻塞routine，提供一个服务于routine,不会阻塞的waterfall
+
+waterfall传入一个管理节点
+通过管理节点在目标routine内管理
+
+var (
+    
+)
+
+type Chain struct {
+    tasks
+    startTime
+    totalTimeout
+}
+
+// 每个routine对应的
+type IWFNode interface {
+    // 如果有
+    TryHandle()
+}
+
+waterfall
+    创建一个调用链对象
+
+    callback()
+
+原则
+如果是阻塞调用，请确认是否应该在go中执行
+回调会被传到对应的sche
+waterfall
+
+写起来还是挺痛苦，需要时刻注意所在routine
+
+. 明确定义那些行为需要在那些routine执行
+. 调试期，能否检查是否在合法routine
+明确的检查某些函数应该执行在合适的routine
+. 使用waterfall来保证异步回调回来时，下一步
+的执行在当前routine执行
+. 阻塞的操作，必须包装成go函数，避免阻塞服务
+主routine
+
+
+调度器能否通过外部传入,定制的可调度队列
+
+type IScheQueue interface {
+    // 尝试一次调度
+    // bool表示调度成功
+    func TrySche() bool
+}
+
+type ScheCtrl interface {
+    func AddQueue(queue *IScheQueue)
+    func TrySche()
+}
+
+
+问题:
+go的异步编程原则是什么？如何适配游戏开发？
+    go一些框架里的的异步行为都会被包装成同步调用，就是
+会阻塞调用者的routine，适合非常独立的分布式任务。
+    如何合理拆分游戏的逻辑，符合go的设计思想，发挥go的
+语言特性。
+
+
+
+
+------------------------
+
+能否仿照nano,快速做个原型
+目标:
+    熟悉代码
+    快速验证
+功能
+. 客户端服务器用json协议
+. 服务器之间rpc用gRPC，类型用json
+. service能方便定制 逻辑代码执行线程
+(无论RPC或者转发RPC)
+(gRPC肯定会在不同线程执行)
+. gRPC client包装成异步
+. notify/request处理
+
+step1
+. RPC库
+    类似 pomelo rpc, 自动建立连接
+    laze connect
+    显式添加接口
+    回调的调度
+
+step2
+. 服务器结构
+    定制启动流程
+    服务发现
+
+
+
+MailBox
+    自动连接目标服务器，并处理消息
+
+MailStation
+    服务器:mailbox管理器
+
+    保存回执等待上层处理
+
+client
+    AddServer
+        增加服务器
+
+    // cb(err, retObj)
+    RPC(serverId, serviceMethod , args, cb, scheduler)
+    ProcessReceipts
+        处理回执，有cb函数的
+
+
+    RPC("chat-1", "room.join", &JoinArgs{RoomId:1001}, function(err error, ret *JoinRetArgs) {
+
+    }, nil)
+
+
+
+问题:
+gRPC客户端调用会阻塞当前routine
+改造成 异步式, cb触发
+cb回来时，根据函数参数定义，反序列化对象
+
+目标
+包装gRPC客户端，可以提供异步请求
+(routine池)
+参数和返回值自动json序列化
+可以定制回调函数的routine
+
+
+potato.jsongprc
+
+
+
+. client rpc请求
+    参数序列化
+. server rpc dispatch
+    参数转化
+    调度投递
+        需要投递到不同线程
+
+    service 结果
+
+. rpc返回，参数转化
+    返回值调度回去
+
+
+service.RPCHandleXXX(...)
+
+    rpcServer.PostRPCResult(repId, &protos.JoinResult{})
+
+
+Handler相关
+Handler请求，前端服务器收到后，包装成rpc，发送到
+对应的远程服务器，得到结果后，自动转发给 客户端
+
+
+
+https://stackoverflow.com/questions/33444968/how-to-get-all-packages-code-coverage-together-in-go
+go test -v -coverpkg=./... -coverprofile=profile.cov ./...
+go tool cover -func profile.cov
+
+执行目录下所有test
+go test --cover ./...
+强制忽略cache
+go test --count=1 --cover ./...
+
+
+go test -coverprofile=../src/cover/count.out
+go tool cover -func=../src/cover/count.out
+html查看每一行是否被覆盖
+go tool cover -html=../src/cover/count.out
+
+appdata\local\temp
